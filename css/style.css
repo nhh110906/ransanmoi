@@ -103,28 +103,7 @@ body {
 .landing-tagline {
   color: var(--muted);
   font-size: 1rem;
-  margin-bottom: 2rem;
-}
-
-.landing-snake-art {
-  margin: 0 auto 2.5rem;
-  max-width: 320px;
-}
-
-.snake-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.snake-body {
-  animation: snake-float 4s ease-in-out infinite;
-  transform-origin: center;
-}
-
-@keyframes snake-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+  margin-bottom: 2.8rem;
 }
 
 .btn-play-arrow {
@@ -588,9 +567,5 @@ body {
 
   .score-hero-value {
     font-size: 2.5rem;
-  }
-
-  .landing-snake-art {
-    margin-bottom: 2rem;
   }
 }
