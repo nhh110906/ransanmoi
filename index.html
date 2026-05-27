@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Rắn săn mồi — Snake.io</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="game-canvas" class="hidden" aria-hidden="true"></canvas>
+
+    <div id="hud" class="hud hidden">
+      <div class="hud-top">
+        <div class="hud-score">
+          <span class="label">Điểm</span>
+          <span id="score">0</span>
+        </div>
+        <div class="hud-length">
+          <span class="label">Độ dài</span>
+          <span id="length">0</span>
+        </div>
+        <div id="boost-bar" class="boost-bar" title="Giữ chuột / chạm để tăng tốc">
+          <div id="boost-fill"></div>
+          <span>Tăng tốc</span>
+        </div>
+      </div>
+
+      <div class="hud-leaderboard">
+        <h3>Bảng xếp hạng</h3>
+        <p id="online-count" class="online-count">0 đang chơi</p>
+        <ol id="leaderboard"></ol>
+      </div>
+
+      <p id="hud-hint" class="hud-hint">Di chuột trong vùng chơi · Giữ chuột để tăng tốc · ESC mở khóa chuột</p>
+    </div>
+
+    <!-- Màn hình chính: rắn trang trí + nút mũi tên -->
+    <section id="screen-landing" class="screen screen-landing" aria-label="Trang chủ">
+      <div class="landing-inner">
+        <h1 class="landing-title">Rắn săn mồi</h1>
+        <p class="landing-tagline">Snake.io · HTML5</p>
+
+        <div class="landing-snake-art" aria-hidden="true">
+          <svg viewBox="0 0 320 200" class="snake-svg">
+            <defs>
+              <linearGradient id="snakeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#58f0a0" />
+                <stop offset="50%" stop-color="#3bc87a" />
+                <stop offset="100%" stop-color="#6eb5ff" />
+              </linearGradient>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            <path class="snake-body" filter="url(#glow)" fill="url(#snakeGrad)" d="M40,120 Q80,40 140,80 T220,60 T280,100 T300,140 Q260,180 200,160 T120,170 T60,150 Q30,140 40,120 Z" />
+            <circle class="snake-eye" cx="295" cy="132" r="6" fill="#fff" />
+            <circle class="snake-eye" cx="297" cy="133" r="2.5" fill="#1a2030" />
+            <circle cx="70" cy="90" r="5" fill="#ffd166" opacity="0.9" />
+            <circle cx="120" cy="55" r="4" fill="#ff7eb9" opacity="0.85" />
+            <circle cx="180" cy="75" r="4" fill="#6eb5ff" opacity="0.85" />
+            <circle cx="240" cy="95" r="5" fill="#ffd166" opacity="0.9" />
+          </svg>
+        </div>
+
+        <button id="btn-landing-play" class="btn-play-arrow" type="button" aria-label="Bắt đầu chơi">
+          <span class="arrow-icon" aria-hidden="true">→</span>
+          <span class="arrow-label">Chơi ngay</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Giao diện vào trận: nhập tên -->
+    <section id="screen-setup" class="screen screen-setup hidden" aria-label="Chuẩn bị vào trận">
+      <div class="overlay-box">
+        <h2 class="setup-title">Chuẩn bị vào trận</h2>
+        <p class="tagline">16 người chơi ảo đang chờ trên bản đồ</p>
+        <ul class="rules">
+          <li>Di chuột (hoặc chạm) để điều khiển hướng rắn</li>
+          <li>Ăn hạt sáng để lớn và ghi điểm</li>
+          <li>Giữ chuột / chạm để <strong>tăng tốc</strong></li>
+          <li>Va thân rắn khác = thua</li>
+        </ul>
+        <label class="name-input">
+          Tên của bạn
+          <input type="text" id="player-name" maxlength="12" placeholder="Người chơi" />
+        </label>
+        <div class="color-picker">
+          <p class="color-picker-title">Màu rắn của bạn</p>
+          <div id="player-color-options" class="color-options" role="radiogroup" aria-label="Chọn màu rắn"></div>
+        </div>
+        <button id="btn-start" class="btn-primary" type="button">Vào trận</button>
+      </div>
+    </section>
+
+    <!-- Kết thúc ván -->
+    <section id="screen-gameover" class="screen screen-gameover hidden" aria-label="Kết thúc trận">
+      <div class="overlay-box overlay-gameover-box">
+        <h2 class="gameover-title">Hết ván!</h2>
+        <p id="death-reason" class="death-reason">Rắn đã gục.</p>
+
+        <div class="score-hero">
+          <span class="score-hero-label">Điểm của bạn</span>
+          <span id="final-score" class="score-hero-value">0</span>
+        </div>
+
+        <p class="final-meta">
+          Độ dài <strong id="final-length">0</strong> ·
+          Kỷ lục <strong id="high-score">0</strong>
+        </p>
+
+        <div class="gameover-actions">
+          <button id="btn-replay" class="btn-primary" type="button">Chơi lại</button>
+          <button id="btn-exit" class="btn-secondary" type="button">Thoát trò chơi</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
