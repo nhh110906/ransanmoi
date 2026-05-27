@@ -43,6 +43,7 @@
     aimY: 60,
     locked: false,
   };
+  let mobileSteerTouchId = null;
   const AIM_MARGIN = 48;
 
   function resize() {
@@ -112,6 +113,7 @@
       rafId = 0;
     }
     pointer.active = false;
+    mobileSteerTouchId = null;
     intentionalClose = false;
     closeSocket();
     OfflineMode.reset();
@@ -214,10 +216,11 @@
   function updateLockHint() {
     if (!hudHintEl || state !== "playing") return;
     const modeLabel = gameMode === "offline" ? "Ngoại tuyến" : "Online";
+    const mobileBoostHelp = " · Mobile: giữ 2 ngón để tăng tốc";
     if (pointer.locked) {
-      hudHintEl.textContent = `${modeLabel} · Giữ chuột để tăng tốc · ESC mở khóa chuột`;
+      hudHintEl.textContent = `${modeLabel} · Giữ chuột để tăng tốc · ESC mở khóa chuột${mobileBoostHelp}`;
     } else {
-      hudHintEl.textContent = `Nhấp vùng chơi để khóa chuột · ${modeLabel}`;
+      hudHintEl.textContent = `Nhấp vùng chơi để khóa chuột · ${modeLabel}${mobileBoostHelp}`;
     }
   }
 
@@ -674,6 +677,34 @@
     }
   }
 
+  function getTouchById(touchList, id) {
+    for (let i = 0; i < touchList.length; i++) {
+      if (touchList[i].identifier === id) return touchList[i];
+    }
+    return null;
+  }
+
+  function updateTouchInput(e) {
+    if (state !== "playing") return;
+    const touches = e.touches;
+    pointer.active = touches.length >= 2;
+
+    if (touches.length === 0) {
+      mobileSteerTouchId = null;
+      return;
+    }
+
+    let steerTouch = null;
+    if (mobileSteerTouchId != null) {
+      steerTouch = getTouchById(touches, mobileSteerTouchId);
+    }
+    if (!steerTouch) {
+      steerTouch = touches[0];
+      mobileSteerTouchId = steerTouch.identifier;
+    }
+    updatePointerFromClient(steerTouch.clientX, steerTouch.clientY);
+  }
+
   document.addEventListener("mousemove", (e) => {
     if (state !== "playing") return;
     if (document.pointerLockElement === canvas) {
@@ -707,9 +738,7 @@
     (e) => {
       e.preventDefault();
       if (state !== "playing") return;
-      pointer.active = true;
-      const t = e.touches[0];
-      updatePointerFromClient(t.clientX, t.clientY);
+      updateTouchInput(e);
     },
     { passive: false }
   );
@@ -718,14 +747,26 @@
     (e) => {
       e.preventDefault();
       if (state !== "playing") return;
-      const t = e.touches[0];
-      updatePointerFromClient(t.clientX, t.clientY);
+      updateTouchInput(e);
     },
     { passive: false }
   );
-  canvas.addEventListener("touchend", () => {
-    pointer.active = false;
-  });
+  canvas.addEventListener(
+    "touchend",
+    (e) => {
+      e.preventDefault();
+      updateTouchInput(e);
+    },
+    { passive: false }
+  );
+  canvas.addEventListener(
+    "touchcancel",
+    (e) => {
+      e.preventDefault();
+      updateTouchInput(e);
+    },
+    { passive: false }
+  );
 
   document.getElementById("btn-landing-play").addEventListener("click", goToSetup);
   document.getElementById("btn-start").addEventListener("click", initGame);
