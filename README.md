@@ -1,6 +1,6 @@
 # Rắn săn mồi — Snake.io (HTML5)
 
-Game rắn săn mồi kiểu **Snake.io / Slither.io**: điều khiển bằng chuột hoặc cảm ứng, ăn hạt để lớn, tranh điểm với bot AI trên bản đồ lớn.
+Game rắn săn mồi kiểu **Snake.io / Slither.io** với **multiplayer realtime** qua WebSocket: nhiều tab/client cùng thấy nhau di chuyển, ăn food chung và va chạm.
 
 ## Luồng màn hình
 
@@ -9,20 +9,22 @@ Game rắn săn mồi kiểu **Snake.io / Slither.io**: điều khiển bằng c
 3. **Chơi** — canvas game
 4. **Hết ván** — hiển thị điểm; « Chơi lại » về màn chuẩn bị, « Thoát trò chơi » về trang chủ
 
-## Chạy game
-
-### Cách 1 — Mở trực tiếp
-
-Double-click file `index.html` hoặc kéo vào trình duyệt (Chrome, Firefox, Edge, Safari).
-
-### Cách 2 — Máy chủ cục bộ (khuyến nghị)
+## Chạy game multiplayer local
 
 ```bash
 cd /Users/hoang/Downloads/web/ransanmoi
-python3 -m http.server 8080
+npm install
+npm run dev
 ```
 
-Mở trình duyệt: **http://localhost:8080**
+Mở trình duyệt tại **http://localhost:8080**.
+
+### Test realtime 2 người chơi
+
+1. Mở 2 tab (hoặc 2 trình duyệt) cùng URL `http://localhost:8080`
+2. Mỗi tab nhập tên riêng, chọn màu riêng, bấm `Vào trận`
+3. Di chuyển ở tab A và B để kiểm tra đồng bộ vị trí realtime
+4. Ăn food và quan sát điểm + leaderboard cập nhật giữa các tab
 
 ## Điều khiển
 
@@ -55,7 +57,8 @@ ransanmoi/
 
 - Canvas toàn màn hình, camera theo người chơi
 - Thân rắn bám đuôi đầu qua lịch sử vị trí (trail)
-- **16 bot AI** (người chơi ảo) với tên/màu/hành vi khác nhau, hồi sinh sau khi chết
+- Server Node.js + WebSocket (`ws`) authoritative world state
+- Multiplayer realtime: join theo tên/màu, food chung, collision player-player, score theo player
 - Bảng xếp hạng top 8, hiển thị số người đang chơi
 - ~420 hạt + quả cầu vàng lớn
 - Không dùng CDN — chỉ HTML, CSS, JavaScript thuần

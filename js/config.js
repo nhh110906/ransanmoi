@@ -1,4 +1,9 @@
 const CONFIG = {
+  NETWORK: {
+    TICK_RATE: 20,
+    WS_PATH: "/ws",
+  },
+
   WORLD_W: 5000,
   WORLD_H: 5000,
 
