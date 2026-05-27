@@ -405,8 +405,33 @@ body {
 
 .tagline {
   color: var(--muted);
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.5rem;
   font-size: 0.95rem;
+}
+
+.connection-status {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(40, 55, 75, 0.35);
+  color: #a8b8cc;
+}
+
+.connection-status.online {
+  background: rgba(88, 240, 160, 0.12);
+  color: #8ee8b8;
+}
+
+.connection-status.offline {
+  background: rgba(255, 200, 80, 0.1);
+  color: #e8c878;
+}
+
+.connection-status.error {
+  background: rgba(255, 100, 100, 0.12);
+  color: #ffaaaa;
 }
 
 .rules {

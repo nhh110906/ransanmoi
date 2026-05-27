@@ -20,12 +20,19 @@
   const playerNameInput = document.getElementById("player-name");
   const playerColorOptionsEl = document.getElementById("player-color-options");
   const hudHintEl = document.getElementById("hud-hint");
+  const connectionStatusEl = document.getElementById("connection-status");
+  const setupTaglineEl = document.querySelector(".screen-setup .tagline");
 
   let state = "landing";
+  let gameMode = null;
   let rafId = 0;
   let socket = null;
   let myPlayerId = null;
   let snapshot = null;
+  let hasJoined = false;
+  let intentionalClose = false;
+  let connectTimeoutId = null;
+  let lastFrameTime = 0;
   let highScore = parseInt(localStorage.getItem("ransanmoi-high") || "0", 10);
   let selectedPlayerPaletteId = localStorage.getItem("ransanmoi-player-color") || CONFIG.PLAYER_PALETTES[0].id;
 
@@ -84,13 +91,19 @@
   }
 
   function closeSocket() {
+    if (connectTimeoutId) {
+      clearTimeout(connectTimeoutId);
+      connectTimeoutId = null;
+    }
     if (socket) {
       socket.onclose = null;
+      socket.onerror = null;
       socket.close();
       socket = null;
     }
     myPlayerId = null;
     snapshot = null;
+    hasJoined = false;
   }
 
   function resetGameState() {
@@ -99,7 +112,10 @@
       rafId = 0;
     }
     pointer.active = false;
+    intentionalClose = false;
     closeSocket();
+    OfflineMode.reset();
+    gameMode = null;
     exitPlayLock();
   }
 
@@ -112,7 +128,52 @@
     resetGameState();
     showScreen("setup");
     renderPlayerColorOptions();
+    updateConnectionStatus();
     playerNameInput.focus();
+  }
+
+  function isStaticPagesHost() {
+    const h = location.hostname;
+    return /\.(github|gitlab)\.io$/i.test(h) || /\.pages\.dev$/i.test(h);
+  }
+
+  function resolveWsUrl() {
+    const params = new URLSearchParams(location.search);
+    const queryWs = params.get("ws");
+    if (queryWs && queryWs.trim()) return queryWs.trim();
+
+    const stored = localStorage.getItem("ransanmoi-ws-url");
+    if (stored && stored.trim()) return stored.trim();
+
+    const cfg = CONFIG.NETWORK.WS_URL;
+    if (cfg && String(cfg).trim()) return String(cfg).trim();
+
+    if (isStaticPagesHost()) return null;
+
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    return `${proto}://${location.host}${CONFIG.NETWORK.WS_PATH}`;
+  }
+
+  function setConnectionError(message) {
+    if (!connectionStatusEl) return;
+    connectionStatusEl.className = "connection-status error";
+    connectionStatusEl.textContent = message;
+  }
+
+  function updateConnectionStatus() {
+    if (!connectionStatusEl) return;
+    const url = resolveWsUrl();
+    if (url) {
+      connectionStatusEl.className = "connection-status online";
+      connectionStatusEl.textContent =
+        "Chế độ online: kết nối máy chủ game khi vào trận (cùng trang hoặc WS_URL).";
+      if (setupTaglineEl) setupTaglineEl.textContent = "Nhiều người chơi thời gian thực trên cùng bản đồ.";
+    } else {
+      connectionStatusEl.className = "connection-status offline";
+      connectionStatusEl.textContent =
+        "Chế độ ngoại tuyến (16 bot). GitHub Pages không chạy máy chủ — chạy npm run dev hoặc đặt WS_URL / ?ws= để chơi online.";
+      if (setupTaglineEl) setupTaglineEl.textContent = "16 người chơi ảo — không cần máy chủ.";
+    }
   }
 
   function getAimBounds() {
@@ -152,10 +213,11 @@
 
   function updateLockHint() {
     if (!hudHintEl || state !== "playing") return;
+    const modeLabel = gameMode === "offline" ? "Ngoại tuyến" : "Online";
     if (pointer.locked) {
-      hudHintEl.textContent = "Realtime multiplayer · Giữ chuột để tăng tốc · ESC mở khóa chuột";
+      hudHintEl.textContent = `${modeLabel} · Giữ chuột để tăng tốc · ESC mở khóa chuột`;
     } else {
-      hudHintEl.textContent = "Nhấp vùng chơi để khóa chuột · Multiplayer đang đồng bộ realtime";
+      hudHintEl.textContent = `Nhấp vùng chơi để khóa chuột · ${modeLabel}`;
     }
   }
 
@@ -177,11 +239,6 @@
     canvas.classList.remove("pointer-locked");
   }
 
-  function wsUrl() {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    return `${proto}://${location.host}${CONFIG.NETWORK.WS_PATH}`;
-  }
-
   function sendInput() {
     if (!socket || socket.readyState !== WebSocket.OPEN || !myPlayerId || state !== "playing") return;
     socket.send(
@@ -193,18 +250,60 @@
     );
   }
 
-  function initGame() {
-    resetGameState();
-    resize();
+  function abortMultiplayerConnection(message) {
+    intentionalClose = true;
+    if (socket) {
+      socket.onclose = null;
+      socket.close();
+      socket = null;
+    }
+    if (connectTimeoutId) {
+      clearTimeout(connectTimeoutId);
+      connectTimeoutId = null;
+    }
+    myPlayerId = null;
+    snapshot = null;
+    hasJoined = false;
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    exitPlayLock();
+    showScreen("setup");
+    setConnectionError(message);
+  }
+
+  function startOfflineGame(name, palette) {
+    gameMode = "offline";
+    intentionalClose = false;
+    showScreen("playing");
+    resetAim();
+    requestPlayLock();
+    updateLockHint();
+    OfflineMode.init(name, palette);
+    lastFrameTime = performance.now();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function startMultiplayerGame(name, palette, url) {
+    gameMode = "multiplayer";
+    hasJoined = false;
+    intentionalClose = false;
     showScreen("playing");
     resetAim();
     requestPlayLock();
     updateLockHint();
 
-    const palette = getSelectedPlayerPalette();
-    const name = (playerNameInput.value.trim() || "Bạn").slice(0, 12);
+    const timeoutMs = CONFIG.NETWORK.CONNECT_TIMEOUT_MS || 8000;
+    connectTimeoutId = setTimeout(() => {
+      if (!hasJoined && state === "playing" && gameMode === "multiplayer") {
+        abortMultiplayerConnection(
+          "Không kết nối được máy chủ trong thời gian chờ. Chạy npm run dev hoặc cấu hình WS_URL / ?ws=."
+        );
+      }
+    }, timeoutMs);
 
-    socket = new WebSocket(wsUrl());
+    socket = new WebSocket(url);
     socket.onopen = () => {
       socket.send(
         JSON.stringify({
@@ -217,9 +316,19 @@
     };
 
     socket.onmessage = (evt) => {
-      const msg = JSON.parse(evt.data);
+      let msg;
+      try {
+        msg = JSON.parse(evt.data);
+      } catch {
+        return;
+      }
       if (msg.type === "joined") {
         myPlayerId = msg.playerId;
+        hasJoined = true;
+        if (connectTimeoutId) {
+          clearTimeout(connectTimeoutId);
+          connectTimeoutId = null;
+        }
         return;
       }
       if (msg.type === "snapshot") {
@@ -228,18 +337,35 @@
     };
 
     socket.onclose = () => {
-      if (state === "playing") {
-        deathReasonEl.textContent = "Mất kết nối server!";
-        finalScoreEl.textContent = "0";
-        finalLengthEl.textContent = "0";
-        highScoreEl.textContent = highScore;
-        screenGameover.classList.remove("hidden");
-        hud.classList.add("hidden");
-        state = "gameover";
+      if (intentionalClose || state !== "playing" || gameMode !== "multiplayer") return;
+      if (!hasJoined) {
+        abortMultiplayerConnection("Không kết nối được máy chủ. Kiểm tra npm run dev hoặc địa chỉ WS_URL.");
+        return;
       }
+      const me = getMyPlayer();
+      endGame({
+        score: me ? me.score : 0,
+        length: me ? me.length : 0,
+        deathReason: "Mất kết nối server!",
+      });
     };
 
     rafId = requestAnimationFrame(loop);
+  }
+
+  function initGame() {
+    resetGameState();
+    resize();
+
+    const palette = getSelectedPlayerPalette();
+    const name = (playerNameInput.value.trim() || "Bạn").slice(0, 12);
+    const url = resolveWsUrl();
+
+    if (!url) {
+      startOfflineGame(name, palette);
+      return;
+    }
+    startMultiplayerGame(name, palette, url);
   }
 
   function getMyPlayer() {
@@ -258,8 +384,39 @@
     highScoreEl.textContent = highScore;
 
     showScreen("gameover");
+    intentionalClose = true;
     closeSocket();
+    OfflineMode.reset();
+    gameMode = null;
     exitPlayLock();
+  }
+
+  function endGameOffline(player) {
+    endGame({
+      score: player.score,
+      length: player.length,
+      deathReason: player.deathReason || "Bạn đã thua!",
+    });
+  }
+
+  function updateHUDOffline(player) {
+    scoreEl.textContent = Math.floor(player.score);
+    lengthEl.textContent = Math.floor(player.length);
+    const boostRatio = clamp((player.length - CONFIG.MIN_LENGTH) / (CONFIG.START_LENGTH * 2), 0, 1);
+    boostFill.style.transform = `scaleX(${boostRatio})`;
+    boostBar.classList.toggle("active", pointer.active && boostRatio > 0.1);
+
+    leaderboardEl.innerHTML = "";
+    OfflineMode.getLeaderboard().forEach((entry, idx) => {
+      const li = document.createElement("li");
+      if (entry.isYou) li.className = "you";
+      const shortName = entry.name.length > 10 ? `${entry.name.slice(0, 9)}…` : entry.name;
+      li.innerHTML = `<span class="rank">${idx + 1}.</span><span class="lb-name">${shortName}</span><span>${Math.floor(entry.score)}</span>`;
+      leaderboardEl.appendChild(li);
+    });
+
+    const alive = OfflineMode.snakes.filter((s) => s.alive).length;
+    onlineCountEl.textContent = `${alive} đang chơi (ngoại tuyến)`;
   }
 
   function updateHUD(player) {
@@ -401,6 +558,53 @@
     ctx.stroke();
   }
 
+  function drawOffline() {
+    ctx.fillStyle = "#121820";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const player = OfflineMode.player;
+    const worldW = CONFIG.WORLD_W;
+    const worldH = CONFIG.WORLD_H;
+    const camX = player
+      ? clamp(player.x - canvas.width / 2, 0, Math.max(0, worldW - canvas.width))
+      : 0;
+    const camY = player
+      ? clamp(player.y - canvas.height / 2, 0, Math.max(0, worldH - canvas.height))
+      : 0;
+
+    drawGrid(camX, camY);
+    drawWorldBounds(camX, camY, worldW, worldH);
+    for (const p of OfflineMode.pellets) {
+      p.draw(ctx, camX, camY, 0);
+    }
+    const sorted = [...OfflineMode.snakes].sort((a, b) => a.y - b.y);
+    for (const snake of sorted) {
+      snake.draw(ctx, camX, camY);
+    }
+    drawMinimapOffline(worldW, worldH);
+    drawPlayerMarker();
+  }
+
+  function drawMinimapOffline(worldW, worldH) {
+    const mw = 120;
+    const mh = 120;
+    const mx = canvas.width - mw - 12;
+    const my = canvas.height - mh - 12;
+    const scaleX = mw / worldW;
+    const scaleY = mh / worldH;
+    ctx.fillStyle = "rgba(10, 14, 22, 0.75)";
+    ctx.strokeStyle = "rgba(88, 240, 160, 0.3)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(mx, my, mw, mh);
+    ctx.strokeRect(mx, my, mw, mh);
+    for (const s of OfflineMode.snakes) {
+      if (!s.alive) continue;
+      ctx.fillStyle = s.colors.head;
+      ctx.beginPath();
+      ctx.arc(mx + s.x * scaleX, my + s.y * scaleY, s.isPlayer ? 3 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   function draw() {
     ctx.fillStyle = "#121820";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -425,8 +629,27 @@
     drawPlayerMarker();
   }
 
-  function loop() {
+  function loop(now) {
     if (state !== "playing") return;
+
+    if (gameMode === "offline") {
+      const t = typeof now === "number" ? now : performance.now();
+      const dt = Math.min(0.05, (t - lastFrameTime) / 1000 || 0.016);
+      lastFrameTime = t;
+      const result = OfflineMode.update(dt, pointer);
+      const player = result.player;
+      if (player) {
+        updateHUDOffline(player);
+        if (!player.alive) {
+          endGameOffline(player);
+          return;
+        }
+      }
+      drawOffline();
+      rafId = requestAnimationFrame(loop);
+      return;
+    }
+
     const me = getMyPlayer();
     if (me) {
       updateHUD(me);
@@ -465,7 +688,6 @@
     if (e.button !== 0) return;
     pointer.active = true;
     if (document.pointerLockElement !== canvas) requestPlayLock();
-    updatePointerFromClient(e.clientX, e.clientY);
   });
   window.addEventListener("mouseup", () => {
     pointer.active = false;
@@ -522,5 +744,6 @@
   resize();
   resetAim();
   renderPlayerColorOptions();
+  updateConnectionStatus();
   showScreen("landing");
 })();

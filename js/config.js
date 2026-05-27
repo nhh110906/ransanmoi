@@ -2,6 +2,9 @@ const CONFIG = {
   NETWORK: {
     TICK_RATE: 20,
     WS_PATH: "/ws",
+    /** Full WebSocket URL when backend is hosted separately (e.g. wss://your-app.onrender.com/ws). Empty = auto. */
+    WS_URL: "",
+    CONNECT_TIMEOUT_MS: 8000,
   },
 
   WORLD_W: 5000,
